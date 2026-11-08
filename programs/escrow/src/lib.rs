@@ -19,4 +19,9 @@ pub mod escrow {
         ctx.accounts.init_escrow(seed, receive, &ctx.bumps)?;
         ctx.accounts.deposit(deposit)
     }
+
+    pub fn take(ctx: Context<Take>) -> Result<()> {
+        ctx.accounts.pay_maker()?;
+        ctx.accounts.withdraw_and_close_vault()
+    }
 }
