@@ -1,12 +1,8 @@
 mod common;
 
 use {
-    anchor_lang::AccountDeserialize,
-    common::*,
-    escrow::Escrow,
-    litesvm_token::CloseAccount,
-    solana_keypair::Keypair,
-    solana_signer::Signer,
+    anchor_lang::AccountDeserialize, common::*, escrow::Escrow, litesvm_token::CloseAccount,
+    solana_keypair::Keypair, solana_signer::Signer,
 };
 
 const SEED: u64 = 42;
@@ -299,5 +295,8 @@ fn works_with_token_2022_mints() {
     send(&mut env.svm, &env.taker, ix);
 
     assert_eq!(env.balance(&env.ata(&taker, &env.mint_a)), DEPOSIT);
-    assert_eq!(env.balance(&env.ata(&env.maker.pubkey(), &env.mint_b)), RECEIVE);
+    assert_eq!(
+        env.balance(&env.ata(&env.maker.pubkey(), &env.mint_b)),
+        RECEIVE
+    );
 }
