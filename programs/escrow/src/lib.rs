@@ -20,7 +20,8 @@ pub mod escrow {
         ctx.accounts.deposit(deposit)
     }
 
-    pub fn take(ctx: Context<Take>) -> Result<()> {
+    pub fn take(ctx: Context<Take>, expected_receive: u64) -> Result<()> {
+        ctx.accounts.check_terms(expected_receive)?;
         ctx.accounts.pay_maker()?;
         ctx.accounts.withdraw_and_close_vault()
     }

@@ -7,7 +7,7 @@ use anchor_spl::{
     },
 };
 
-use crate::{constants::ESCROW_SEED, state::Escrow};
+use crate::{constants::ESCROW_SEED, error::EscrowError, state::Escrow};
 
 #[derive(Accounts)]
 pub struct Take<'info> {
@@ -74,6 +74,19 @@ pub struct Take<'info> {
 }
 
 impl<'info> Take<'info> {
+    /// The maker can call update() at any time, so without this a maker could
+    /// watch for a pending take and bump the price right before it lands.
+    /// The taker passes the receive amount they agreed to and we refuse to
+    /// go ahead if it's not what's stored anymore.
+    pub fn check_terms(&self, expected_receive: u64) -> Result<()> {
+        require_eq!(
+            self.escrow.receive,
+            expected_receive,
+            EscrowError::ReceiveChanged
+        );
+        Ok(())
+    }
+
     pub fn pay_maker(&mut self) -> Result<()> {
         let cpi_accounts = TransferChecked {
             from: self.taker_ata_b.to_account_info(),

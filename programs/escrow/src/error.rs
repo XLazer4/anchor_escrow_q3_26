@@ -6,4 +6,6 @@ pub enum EscrowError {
     InvalidAmount,
     #[msg("Mint A and mint B must be different")]
     SameMint,
+    #[msg("Receive amount changed since the taker last saw the escrow")]
+    ReceiveChanged,
 }

@@ -144,12 +144,12 @@ impl Env {
         )
     }
 
-    pub fn take_ix(&self, taker: &Pubkey, seed: u64) -> Instruction {
+    pub fn take_ix(&self, taker: &Pubkey, seed: u64, expected_receive: u64) -> Instruction {
         let maker = self.maker.pubkey();
         let escrow = self.escrow_pda(&maker, seed);
         Instruction::new_with_bytes(
             escrow::id(),
-            &escrow::instruction::Take {}.data(),
+            &escrow::instruction::Take { expected_receive }.data(),
             escrow::accounts::Take {
                 taker: *taker,
                 maker,

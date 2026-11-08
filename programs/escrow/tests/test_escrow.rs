@@ -15,6 +15,7 @@ const RECEIVE: u64 = 400_000_000;
 
 const ERR_INVALID_AMOUNT: u32 = 6000;
 const ERR_SAME_MINT: u32 = 6001;
+const ERR_RECEIVE_CHANGED: u32 = 6002;
 // seeds are checked before has_one, and both are derived from the maker
 // key, so a wrong signer trips ConstraintSeeds first
 const ERR_SEEDS: u32 = 2006;
@@ -114,7 +115,7 @@ fn take_swaps_tokens_and_closes_everything() {
     let rent_back = env.lamports(&escrow_pda) + env.lamports(&vault);
     let maker_lamports = env.lamports(&maker);
 
-    let ix = env.take_ix(&taker, SEED);
+    let ix = env.take_ix(&taker, SEED, RECEIVE);
     send(&mut env.svm, &env.taker, ix);
 
     assert_eq!(env.balance(&env.ata(&taker, &env.mint_a)), DEPOSIT);
@@ -133,7 +134,7 @@ fn take_fails_if_taker_is_short_on_mint_b() {
     let ix = env.make_ix(SEED, DEPOSIT, TAKER_B + 1);
     send(&mut env.svm, &env.maker, ix);
 
-    let ix = env.take_ix(&env.taker.pubkey(), SEED);
+    let ix = env.take_ix(&env.taker.pubkey(), SEED, TAKER_B + 1);
     assert!(try_send(&mut env.svm, &env.taker, ix).is_err());
 
     // nothing moved
@@ -147,7 +148,7 @@ fn cannot_take_twice() {
     let mut env = Env::new();
     make(&mut env, SEED);
 
-    let ix = env.take_ix(&env.taker.pubkey(), SEED);
+    let ix = env.take_ix(&env.taker.pubkey(), SEED, RECEIVE);
     send(&mut env.svm, &env.taker, ix.clone());
     expect_err(&mut env.svm, &env.taker, ix, ERR_NOT_INITIALIZED);
 }
@@ -215,7 +216,7 @@ fn cannot_take_after_refund() {
     let ix = env.refund_ix(&env.maker.pubkey(), SEED);
     send(&mut env.svm, &env.maker, ix);
 
-    let ix = env.take_ix(&env.taker.pubkey(), SEED);
+    let ix = env.take_ix(&env.taker.pubkey(), SEED, RECEIVE);
     expect_err(&mut env.svm, &env.taker, ix, ERR_NOT_INITIALIZED);
 }
 
@@ -242,7 +243,7 @@ fn take_after_update_pays_the_new_amount() {
     send(&mut env.svm, &env.maker, ix);
 
     let taker = env.taker.pubkey();
-    let ix = env.take_ix(&taker, SEED);
+    let ix = env.take_ix(&taker, SEED, new_receive);
     send(&mut env.svm, &env.taker, ix);
 
     assert_eq!(
@@ -250,6 +251,20 @@ fn take_after_update_pays_the_new_amount() {
         new_receive
     );
     assert_eq!(env.balance(&env.taker_ata_b), TAKER_B - new_receive);
+}
+
+#[test]
+fn take_fails_if_maker_raised_the_price_first() {
+    let mut env = Env::new();
+    make(&mut env, SEED);
+
+    // taker saw RECEIVE, maker bumps it before the take lands
+    let ix = env.update_ix(&env.maker.pubkey(), SEED, RECEIVE * 2);
+    send(&mut env.svm, &env.maker, ix);
+
+    let ix = env.take_ix(&env.taker.pubkey(), SEED, RECEIVE);
+    expect_err(&mut env.svm, &env.taker, ix, ERR_RECEIVE_CHANGED);
+    assert_eq!(env.balance(&env.taker_ata_b), TAKER_B);
 }
 
 #[test]
@@ -279,7 +294,7 @@ fn works_with_token_2022_mints() {
     make(&mut env, SEED);
 
     let taker = env.taker.pubkey();
-    let ix = env.take_ix(&taker, SEED);
+    let ix = env.take_ix(&taker, SEED, RECEIVE);
     send(&mut env.svm, &env.taker, ix);
 
     assert_eq!(env.balance(&env.ata(&taker, &env.mint_a)), DEPOSIT);
