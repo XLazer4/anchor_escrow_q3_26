@@ -2,7 +2,7 @@
 
 use {
     anchor_lang::{
-        prelude::Pubkey,
+        prelude::{Clock, Pubkey},
         solana_program::{
             instruction::{error::InstructionError, Instruction},
             system_program,
@@ -23,6 +23,8 @@ use {
 pub const DECIMALS: u8 = 6;
 pub const MAKER_A: u64 = 1_000_000_000;
 pub const TAKER_B: u64 = 1_000_000_000;
+/// default offer length used by make_ix
+pub const DURATION: i64 = 60 * 60 * 24;
 
 pub struct Env {
     pub svm: LiteSVM,
@@ -118,7 +120,30 @@ impl Env {
             .is_some_and(|a| a.lamports > 0)
     }
 
+    pub fn now(&self) -> i64 {
+        self.svm.get_sysvar::<Clock>().unix_timestamp
+    }
+
+    /// move the clock forward (or back with a negative value)
+    pub fn warp(&mut self, secs: i64) {
+        let mut clock: Clock = self.svm.get_sysvar();
+        clock.unix_timestamp += secs;
+        self.svm.set_sysvar(&clock);
+    }
+
+    /// open to anyone, expires in DURATION
     pub fn make_ix(&self, seed: u64, deposit: u64, receive: u64) -> Instruction {
+        self.make_ix_with(seed, deposit, receive, DURATION, None)
+    }
+
+    pub fn make_ix_with(
+        &self,
+        seed: u64,
+        deposit: u64,
+        receive: u64,
+        duration: i64,
+        taker: Option<Pubkey>,
+    ) -> Instruction {
         let maker = self.maker.pubkey();
         let escrow = self.escrow_pda(&maker, seed);
         Instruction::new_with_bytes(
@@ -127,6 +152,8 @@ impl Env {
                 seed,
                 deposit,
                 receive,
+                duration,
+                taker,
             }
             .data(),
             escrow::accounts::Make {
@@ -168,17 +195,18 @@ impl Env {
         )
     }
 
-    /// `signer` is passed as the maker account. for the happy path that's
-    /// the real maker, tests use someone else to check the constraints.
-    pub fn refund_ix(&self, signer: &Pubkey, seed: u64) -> Instruction {
-        let escrow = self.escrow_pda(&self.maker.pubkey(), seed);
+    /// `caller` signs, funds always go to the real maker
+    pub fn refund_ix(&self, caller: &Pubkey, seed: u64) -> Instruction {
+        let maker = self.maker.pubkey();
+        let escrow = self.escrow_pda(&maker, seed);
         Instruction::new_with_bytes(
             escrow::id(),
             &escrow::instruction::Refund {}.data(),
             escrow::accounts::Refund {
-                maker: *signer,
+                caller: *caller,
+                maker,
                 mint_a: self.mint_a,
-                maker_ata_a: self.ata(signer, &self.mint_a),
+                maker_ata_a: self.ata(&maker, &self.mint_a),
                 escrow,
                 vault: self.ata(&escrow, &self.mint_a),
                 associated_token_program: associated_token::ID,
@@ -189,11 +217,21 @@ impl Env {
         )
     }
 
-    pub fn update_ix(&self, signer: &Pubkey, seed: u64, new_receive: u64) -> Instruction {
+    pub fn update_ix(
+        &self,
+        signer: &Pubkey,
+        seed: u64,
+        new_receive: Option<u64>,
+        new_expires_at: Option<i64>,
+    ) -> Instruction {
         let escrow = self.escrow_pda(&self.maker.pubkey(), seed);
         Instruction::new_with_bytes(
             escrow::id(),
-            &escrow::instruction::Update { new_receive }.data(),
+            &escrow::instruction::Update {
+                new_receive,
+                new_expires_at,
+            }
+            .data(),
             escrow::accounts::Update {
                 maker: *signer,
                 escrow,

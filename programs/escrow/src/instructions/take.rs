@@ -84,6 +84,13 @@ impl<'info> Take<'info> {
             expected_receive,
             EscrowError::ReceiveChanged
         );
+
+        let now = Clock::get()?.unix_timestamp;
+        require!(now < self.escrow.expires_at, EscrowError::EscrowExpired);
+
+        if let Some(allowed) = self.escrow.taker {
+            require_keys_eq!(allowed, self.taker.key(), EscrowError::WrongTaker);
+        }
         Ok(())
     }
 

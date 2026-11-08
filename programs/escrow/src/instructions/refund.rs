@@ -7,20 +7,26 @@ use anchor_spl::{
     },
 };
 
-use crate::{constants::ESCROW_SEED, state::Escrow};
+use crate::{constants::ESCROW_SEED, error::EscrowError, state::Escrow};
 
 #[derive(Accounts)]
 pub struct Refund<'info> {
+    /// the maker, or once the escrow has expired, anyone. tokens and rent
+    /// always go to the maker no matter who calls it.
     #[account(mut)]
-    pub maker: Signer<'info>,
+    pub caller: Signer<'info>,
+
+    #[account(mut)]
+    pub maker: SystemAccount<'info>,
 
     #[account(mint::token_program = token_program)]
     pub mint_a: InterfaceAccount<'info, Mint>,
 
-    // maker might have closed their ata after make, so recreate it if needed
+    // maker might have closed their ata after make, so recreate it if needed.
+    // whoever calls refund pays for that.
     #[account(
         init_if_needed,
-        payer = maker,
+        payer = caller,
         associated_token::mint = mint_a,
         associated_token::authority = maker,
         associated_token::token_program = token_program
@@ -51,6 +57,15 @@ pub struct Refund<'info> {
 }
 
 impl<'info> Refund<'info> {
+    pub fn check_caller(&self) -> Result<()> {
+        if self.caller.key() == self.maker.key() {
+            return Ok(());
+        }
+        let now = Clock::get()?.unix_timestamp;
+        require!(now >= self.escrow.expires_at, EscrowError::NotExpired);
+        Ok(())
+    }
+
     pub fn refund_and_close_vault(&mut self) -> Result<()> {
         let maker_key = self.maker.key();
         let seed_bytes = self.escrow.seed.to_le_bytes();

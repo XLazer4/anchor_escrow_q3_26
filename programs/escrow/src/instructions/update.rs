@@ -16,9 +16,26 @@ pub struct Update<'info> {
 }
 
 impl<'info> Update<'info> {
-    pub fn update(&mut self, new_receive: u64) -> Result<()> {
-        require!(new_receive > 0, EscrowError::InvalidAmount);
-        self.escrow.receive = new_receive;
+    /// Either field can be left as None to keep it. Setting a new expiry on
+    /// an already expired escrow puts it back on the market, which is fine,
+    /// it's the maker's deposit.
+    pub fn update(&mut self, new_receive: Option<u64>, new_expires_at: Option<i64>) -> Result<()> {
+        require!(
+            new_receive.is_some() || new_expires_at.is_some(),
+            EscrowError::NothingToUpdate
+        );
+
+        if let Some(receive) = new_receive {
+            require!(receive > 0, EscrowError::InvalidAmount);
+            self.escrow.receive = receive;
+        }
+
+        if let Some(expires_at) = new_expires_at {
+            let now = Clock::get()?.unix_timestamp;
+            require!(expires_at > now, EscrowError::InvalidExpiry);
+            self.escrow.expires_at = expires_at;
+        }
+
         Ok(())
     }
 }

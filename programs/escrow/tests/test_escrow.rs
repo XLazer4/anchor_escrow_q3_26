@@ -16,6 +16,7 @@ const RECEIVE: u64 = 400_000_000;
 const ERR_INVALID_AMOUNT: u32 = 6000;
 const ERR_SAME_MINT: u32 = 6001;
 const ERR_RECEIVE_CHANGED: u32 = 6002;
+const ERR_NOT_EXPIRED: u32 = 6005;
 // seeds are checked before has_one, and both are derived from the maker
 // key, so a wrong signer trips ConstraintSeeds first
 const ERR_SEEDS: u32 = 2006;
@@ -173,7 +174,7 @@ fn refund_returns_deposit_and_closes_everything() {
 }
 
 #[test]
-fn only_maker_can_refund() {
+fn only_maker_can_refund_while_live() {
     let mut env = Env::new();
     make(&mut env, SEED);
 
@@ -181,7 +182,7 @@ fn only_maker_can_refund() {
     env.svm.airdrop(&thief.pubkey(), 1_000_000_000).unwrap();
 
     let ix = env.refund_ix(&thief.pubkey(), SEED);
-    expect_err(&mut env.svm, &thief, ix, ERR_SEEDS);
+    expect_err(&mut env.svm, &thief, ix, ERR_NOT_EXPIRED);
 
     let escrow_pda = env.escrow_pda(&env.maker.pubkey(), SEED);
     assert_eq!(env.balance(&env.ata(&escrow_pda, &env.mint_a)), DEPOSIT);
@@ -227,7 +228,7 @@ fn update_changes_receive_amount() {
     let mut env = Env::new();
     make(&mut env, SEED);
 
-    let ix = env.update_ix(&env.maker.pubkey(), SEED, RECEIVE / 2);
+    let ix = env.update_ix(&env.maker.pubkey(), SEED, Some(RECEIVE / 2), None);
     send(&mut env.svm, &env.maker, ix);
 
     assert_eq!(read_escrow(&env, SEED).receive, RECEIVE / 2);
@@ -239,7 +240,7 @@ fn take_after_update_pays_the_new_amount() {
     make(&mut env, SEED);
 
     let new_receive = 123_000_000;
-    let ix = env.update_ix(&env.maker.pubkey(), SEED, new_receive);
+    let ix = env.update_ix(&env.maker.pubkey(), SEED, Some(new_receive), None);
     send(&mut env.svm, &env.maker, ix);
 
     let taker = env.taker.pubkey();
@@ -259,7 +260,7 @@ fn take_fails_if_maker_raised_the_price_first() {
     make(&mut env, SEED);
 
     // taker saw RECEIVE, maker bumps it before the take lands
-    let ix = env.update_ix(&env.maker.pubkey(), SEED, RECEIVE * 2);
+    let ix = env.update_ix(&env.maker.pubkey(), SEED, Some(RECEIVE * 2), None);
     send(&mut env.svm, &env.maker, ix);
 
     let ix = env.take_ix(&env.taker.pubkey(), SEED, RECEIVE);
@@ -272,7 +273,7 @@ fn update_rejects_zero() {
     let mut env = Env::new();
     make(&mut env, SEED);
 
-    let ix = env.update_ix(&env.maker.pubkey(), SEED, 0);
+    let ix = env.update_ix(&env.maker.pubkey(), SEED, Some(0), None);
     expect_err(&mut env.svm, &env.maker, ix, ERR_INVALID_AMOUNT);
 }
 
@@ -281,7 +282,7 @@ fn only_maker_can_update() {
     let mut env = Env::new();
     make(&mut env, SEED);
 
-    let ix = env.update_ix(&env.taker.pubkey(), SEED, 1);
+    let ix = env.update_ix(&env.taker.pubkey(), SEED, Some(1), None);
     expect_err(&mut env.svm, &env.taker, ix, ERR_SEEDS);
     assert_eq!(read_escrow(&env, SEED).receive, RECEIVE);
 }
