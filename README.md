@@ -65,6 +65,8 @@ cargo test
 
 `Anchor.toml` asks for anchor 1.1.2. If `anchor --version` shows something else, run `avm use 1.1.2` or call `~/.avm/bin/anchor-1.1.2` directly.
 
+On a fresh clone `anchor build` prints a "Program ID mismatch" warning. The program keypair lives in `target/deploy`, which is gitignored, so anchor makes a new one that doesn't match `declare_id!`. It still builds, and the tests load the program at the `declare_id!` address so they don't care. `anchor build --ignore-keys` skips the check.
+
 The tests `include_bytes!` the program from `target/deploy/escrow.so`, so build before testing or they'll run against an old binary (or fail to compile on a fresh clone).
 
 ## Tests
